@@ -134,6 +134,7 @@ var archConfigs = map[string]*archConfig{
 		CmdLine: []string{
 			"root=/dev/sda",
 			"console=ttyS0",
+			"kasan_multi_shot=1",
 		},
 	},
 	"linux/386": {
