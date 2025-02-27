@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -863,31 +864,16 @@ func (mgr *Manager) saveCrash(crash *Crash) bool {
 	if err := mgr.reporter.Symbolize(crash.Report); err != nil {
 		log.Errorf("failed to symbolize report: %v", err)
 	}
-	if crash.Type == crash_pkg.MemoryLeak {
-		mgr.mu.Lock()
-		mgr.memoryLeakFrames[crash.Frame] = true
-		mgr.mu.Unlock()
-	}
-	if crash.Type == crash_pkg.DataRace {
-		mgr.mu.Lock()
-		mgr.dataRaceFrames[crash.Frame] = true
-		mgr.mu.Unlock()
+	// Only need KASAN use-after-free reports.
+	if crash.Type != crash_pkg.KASAN || !strings.Contains(crash.Title, "use-after-free") {
+		crash.Suppressed = true
+		return false
 	}
 	flags := ""
 	if crash.Corrupted {
 		flags += " [corrupted]"
 	}
-	if crash.Suppressed {
-		flags += " [suppressed]"
-	}
 	log.Logf(0, "vm-%v: crash: %v%v", crash.vmIndex, crash.Title, flags)
-
-	if crash.Suppressed {
-		// Collect all of them into a single bucket so that it's possible to control and assess them,
-		// e.g. if there are some spikes in suppressed reports.
-		crash.Title = "suppressed report"
-		mgr.stats.crashSuppressed.inc()
-	}
 
 	mgr.stats.crashes.inc()
 	mgr.mu.Lock()
@@ -965,7 +951,8 @@ func (mgr *Manager) saveCrash(crash *Crash) bool {
 	return mgr.needLocalRepro(crash)
 }
 
-const maxReproAttempts = 3
+// race condition may need more repros
+const maxReproAttempts = 6
 
 func (mgr *Manager) needLocalRepro(crash *Crash) bool {
 	if !mgr.cfg.Reproduce || crash.Corrupted || crash.Suppressed {
