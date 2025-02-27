@@ -978,7 +978,7 @@ google.golang.org/appengine/internal/socket
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/socket
 google.golang.org/appengine/urlfetch
-# google.golang.org/appengine/v2 v2.0.4
+# google.golang.org/appengine/v2 v2.0.6
 ## explicit; go 1.11
 google.golang.org/appengine/v2
 google.golang.org/appengine/v2/aetest
