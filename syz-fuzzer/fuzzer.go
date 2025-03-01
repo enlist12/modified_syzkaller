@@ -157,6 +157,8 @@ func main() {
 		flagRunTest  = flag.Bool("runtest", false, "enable program testing mode") // used by pkg/runtest
 		flagRawCover = flag.Bool("raw_cover", false, "fetch raw coverage")
 	)
+	//race conditon only need one process
+	*flagProcs = 1
 	defer tool.Init()()
 	outputType := parseOutputType(*flagOutput)
 	log.Logf(0, "fuzzer started")

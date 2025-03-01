@@ -824,6 +824,7 @@ func (mgr *Manager) runInstanceInner(index int, instanceName string) (*report.Re
 			SandboxArg: mgr.cfg.SandboxArg,
 		},
 	}
+	// Fully cmd executed in the VM.
 	cmd := instance.FuzzerCmd(args)
 	outc, errc, err := inst.Run(mgr.cfg.Timeouts.VMRunningTime, mgr.vmStop, cmd)
 	if err != nil {
