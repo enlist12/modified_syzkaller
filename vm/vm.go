@@ -297,7 +297,8 @@ func (mon *monitor) monitorExecution() *report.Report {
 				bytes.Contains(mon.output[lastPos:], executingProgram2) {
 				lastExecuteTime = time.Now()
 			}
-			if mon.reporter.ContainsCrash(mon.output[mon.matchPos:]) {
+			//we only care for KASAN UAF
+			if strings.Contains(string(mon.output[mon.matchPos:]), "KASAN: use-after-free") {
 				return mon.extractError("unknown error")
 			}
 			if len(mon.output) > 2*mon.beforeContext {
