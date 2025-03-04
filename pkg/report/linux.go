@@ -373,6 +373,7 @@ func (ctx *linux) findReport(output []byte, oops *oops, startPos int, context st
 	if Is_Path_Exist(PATH) {
 		is_exsit = true
 	} else {
+		AllPaths = append(AllPaths, PATH)
 		is_exsit = false
 	}
 	return
