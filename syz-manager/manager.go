@@ -837,6 +837,8 @@ func (mgr *Manager) runInstanceInner(index int, instanceName string) (*report.Re
 		// This is the only "OK" outcome.
 		log.Logf(0, "%s: running for %v, restarting", instanceName, time.Since(start))
 	} else {
+		//find new path
+		log.Logf(0, "A new race UAF path has been found!")
 		vmInfo, err = inst.Info()
 		if err != nil {
 			vmInfo = []byte(fmt.Sprintf("error getting VM info: %v\n", err))
@@ -862,6 +864,7 @@ func (mgr *Manager) emailCrash(crash *Crash) {
 }
 
 func (mgr *Manager) saveCrash(crash *Crash) bool {
+	//Get more information about the crash from vmlinux
 	if err := mgr.reporter.Symbolize(crash.Report); err != nil {
 		log.Errorf("failed to symbolize report: %v", err)
 	}

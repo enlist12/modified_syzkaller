@@ -367,14 +367,7 @@ func (mon *monitor) extractError(defaultError string) *report.Report {
 func (mon *monitor) createReport(defaultError string) *report.Report {
 	rep := mon.reporter.ParseFrom(mon.output, mon.matchPos)
 	if rep == nil {
-		if defaultError == "" {
-			return nil
-		}
-		return &report.Report{
-			Title:      defaultError,
-			Output:     mon.output,
-			Suppressed: report.IsSuppressed(mon.reporter, mon.output),
-		}
+		return nil
 	}
 	start := rep.StartPos - mon.beforeContext
 	if start < 0 {

@@ -155,7 +155,10 @@ func (ctx *linux) Parse(output []byte) *Report {
 			Output:   output,
 			StartPos: startPos,
 		}
-		endPos, reportEnd, report, prefix := ctx.findReport(output, oops, startPos, context, questionable)
+		endPos, reportEnd, report, prefix, is_exist := ctx.findReport(output, oops, startPos, context, questionable)
+		if is_exist {
+			return nil
+		}
 		rep.EndPos = endPos
 		title, corrupted, altTitles, format := extractDescription(report[:reportEnd], oops, linuxStackParams)
 		if title == "" {
@@ -236,10 +239,37 @@ func (ctx *linux) reportMinLines(oopsLine []byte) int {
 	return 22
 }
 
+// compareMaps 判断两个 map 是否相等
+func compareMaps(map1, map2 map[string]bool) bool {
+	if len(map1) != len(map2) {
+		return false
+	}
+
+	for key, value := range map1 {
+		if v, exists := map2[key]; !exists || v != value {
+			return false
+		}
+	}
+
+	return true
+}
+
+// record exsiting paths
+var AllPaths []map[string]bool
+
+func Is_Path_Exist(mypath map[string]bool) bool {
+	for _, path := range AllPaths {
+		if compareMaps(path, mypath) {
+			return true
+		}
+	}
+	return false
+}
+
 // Yes, it is complex, but all state and logic are tightly coupled. It's unclear how to simplify it.
 // nolint: gocyclo, gocognit
 func (ctx *linux) findReport(output []byte, oops *oops, startPos int, context string, useQuestionable bool) (
-	endPos, reportEnd int, report []byte, prefix [][]byte) {
+	endPos, reportEnd int, report []byte, prefix [][]byte, is_exsit bool) {
 	// Prepend 5 lines preceding start of the report,
 	// they can contain additional info related to the report.
 	maxPrefix := 5
@@ -251,6 +281,8 @@ func (ctx *linux) findReport(output []byte, oops *oops, startPos int, context st
 	textLines := 0
 	skipText, cpuTraceback := false, false
 	oopsLine := []byte{}
+	//record all race UAF points
+	PATH := make(map[string]bool)
 	for pos, next := 0, 0; pos < len(output); pos = next + 1 {
 		next = bytes.IndexByte(output[pos:], '\n')
 		if next != -1 {
@@ -273,6 +305,10 @@ func (ctx *linux) findReport(output []byte, oops *oops, startPos int, context st
 		isOopsLine := pos == startPos
 		if isOopsLine {
 			oopsLine = line
+		}
+
+		if strings.Contains(string(stripped), "KASAN: use-after-free") {
+			PATH[string(stripped)] = true
 		}
 
 		for _, oops1 := range linuxOopses {
@@ -333,6 +369,11 @@ func (ctx *linux) findReport(output []byte, oops *oops, startPos int, context st
 		if secondReportPos == 0 || context != "" && context != contextConsole {
 			reportEnd = len(report)
 		}
+	}
+	if Is_Path_Exist(PATH) {
+		is_exsit = true
+	} else {
+		is_exsit = false
 	}
 	return
 }
