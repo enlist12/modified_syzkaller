@@ -95,8 +95,9 @@ type CallInfo struct {
 }
 
 type ProgInfo struct {
-	Calls []CallInfo
-	Extra CallInfo // stores Signal and Cover collected from background threads
+	Calls    []CallInfo
+	Extra    CallInfo // stores Signal and Cover collected from background threads
+	Is_kasan bool     // true if this is a KASAN crash
 }
 
 type Env struct {
@@ -606,6 +607,7 @@ func makeCommand(pid int, bin []string, config *Config, inFile, outFile *os.File
 
 	c.readDone = make(chan []byte, 1)
 
+	//start to executor C prog
 	cmd := osutil.Command(bin[0], bin[1:]...)
 	if inFile != nil && outFile != nil {
 		cmd.ExtraFiles = []*os.File{inFile, outFile}

@@ -20,6 +20,7 @@ type WorkQueue struct {
 	candidate       []*WorkCandidate
 	triage          []*WorkTriage
 	smash           []*WorkSmash
+	kasan           []*WorkKasan
 
 	procs          int
 	needCandidates chan struct{}
@@ -53,6 +54,11 @@ type WorkCandidate struct {
 	flags ProgTypes
 }
 
+type WorkKasan struct {
+	p     *prog.Prog
+	flags ProgTypes
+}
+
 // WorkSmash are programs just added to corpus.
 // During smashing these programs receive a one-time special attention
 // (emit faults, collect comparison hints, etc).
@@ -82,6 +88,8 @@ func (wq *WorkQueue) enqueue(item interface{}) {
 		wq.candidate = append(wq.candidate, item)
 	case *WorkSmash:
 		wq.smash = append(wq.smash, item)
+	case *WorkKasan:
+		wq.kasan = append(wq.kasan, item)
 	default:
 		panic("unknown work type")
 	}
@@ -89,14 +97,18 @@ func (wq *WorkQueue) enqueue(item interface{}) {
 
 func (wq *WorkQueue) dequeue() (item interface{}) {
 	wq.mu.RLock()
-	if len(wq.triageCandidate)+len(wq.candidate)+len(wq.triage)+len(wq.smash) == 0 {
+	if len(wq.triageCandidate)+len(wq.candidate)+len(wq.triage)+len(wq.smash)+len(wq.kasan) == 0 {
 		wq.mu.RUnlock()
 		return nil
 	}
 	wq.mu.RUnlock()
 	wq.mu.Lock()
 	wantCandidates := false
-	if len(wq.triageCandidate) != 0 {
+	if len(wq.kasan) != 0 {
+		last := len(wq.kasan) - 1
+		item = wq.kasan[last]
+		wq.kasan = wq.kasan[:last]
+	} else if len(wq.triageCandidate) != 0 {
 		last := len(wq.triageCandidate) - 1
 		item = wq.triageCandidate[last]
 		wq.triageCandidate = wq.triageCandidate[:last]
@@ -115,6 +127,7 @@ func (wq *WorkQueue) dequeue() (item interface{}) {
 		wq.smash = wq.smash[:last]
 	}
 	wq.mu.Unlock()
+	//if candidates less than procs , need more candidates
 	if wantCandidates {
 		select {
 		case wq.needCandidates <- struct{}{}:

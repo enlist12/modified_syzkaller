@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -74,6 +76,8 @@ func (proc *Proc) loop() {
 				proc.triageInput(item)
 			case *WorkCandidate:
 				proc.execute(proc.execOpts, item.p, item.flags, StatCandidate)
+			case *WorkKasan:
+				proc.MutatePoc(proc.execOpts, item.p, StatCandidate)
 			case *WorkSmash:
 				proc.smashInput(item)
 			default:
@@ -96,6 +100,16 @@ func (proc *Proc) loop() {
 			log.Logf(1, "#%v: mutated", proc.pid)
 			proc.executeAndCollide(proc.execOpts, p, ProgNormal, StatFuzz)
 		}
+	}
+}
+
+func (proc *Proc) MutatePoc(execOpts *ipc.ExecOpts, p *prog.Prog, stat Stat) {
+	ct := proc.fuzzer.choiceTable
+	fuzzerSnapshot := proc.fuzzer.snapshot()
+	for i := 0; i < 500; i++ {
+		p := p.Clone()
+		p.Mutate(proc.rnd, prog.RecommendedCalls, ct, proc.fuzzer.noMutate, fuzzerSnapshot.corpus)
+		proc.execute(proc.execOpts, p, ProgNormal, StatCandidate)
 	}
 }
 
@@ -256,6 +270,9 @@ func (proc *Proc) execute(execOpts *ipc.ExecOpts, p *prog.Prog, flags ProgTypes,
 	if info == nil {
 		return nil
 	}
+	if info.Is_kasan {
+		proc.fuzzer.workQueue.enqueue(&WorkKasan{p, ProgNormal})
+	}
 	calls, extra := proc.fuzzer.checkNewSignal(p, info)
 	for _, callIndex := range calls {
 		proc.enqueueCallTriage(p, flags, callIndex, info.Calls[callIndex])
@@ -289,7 +306,10 @@ func (proc *Proc) executeAndCollide(execOpts *ipc.ExecOpts, p *prog.Prog, flags 
 	}
 	const collideIterations = 2
 	for i := 0; i < collideIterations; i++ {
-		proc.executeRaw(proc.execOptsCollide, proc.randomCollide(p), StatCollide)
+		info := proc.executeRaw(proc.execOptsCollide, proc.randomCollide(p), StatCollide)
+		if info.Is_kasan {
+			proc.fuzzer.workQueue.enqueue(&WorkKasan{p, ProgNormal})
+		}
 	}
 }
 
@@ -326,6 +346,21 @@ func (proc *Proc) executeRaw(opts *ipc.ExecOpts, p *prog.Prog, stat Stat) *ipc.P
 	for try := 0; ; try++ {
 		atomic.AddUint64(&proc.fuzzer.stats[stat], 1)
 		output, info, hanged, err := proc.env.Exec(opts, p)
+
+		// Check if the program has triggered KASAN.
+		cmd := exec.Command("dmesg", "-c")
+		outc, error := cmd.Output()
+
+		if error != nil {
+			log.Logf(1, "dmesg error: %v", error)
+		}
+
+		if strings.Contains(string(outc), "KASAN: use-after-free") {
+			info.Is_kasan = true
+		} else {
+			info.Is_kasan = false
+		}
+
 		if err != nil {
 			if err == prog.ErrExecBufferTooSmall {
 				// It's bad if we systematically fail to serialize programs,
