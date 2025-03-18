@@ -301,6 +301,9 @@ func (mon *monitor) monitorExecution() *report.Report {
 			if strings.Contains(string(mon.output[mon.matchPos:]), "KASAN: use-after-free") {
 				return mon.extractError("unknown error")
 			}
+			if strings.Contains(string(mon.output[mon.matchPos:]), fuzzerPreemptedStr) {
+				return mon.extractError("unknown error")
+			}
 			if len(mon.output) > 2*mon.beforeContext {
 				copy(mon.output, mon.output[len(mon.output)-mon.beforeContext:])
 				mon.output = mon.output[:mon.beforeContext]
@@ -334,32 +337,17 @@ func (mon *monitor) monitorExecution() *report.Report {
 }
 
 func (mon *monitor) extractError(defaultError string) *report.Report {
-	diagOutput, diagWait := []byte{}, false
-	if defaultError != "" {
-		diagOutput, diagWait = mon.inst.diagnose(mon.createReport(defaultError))
-	}
-	// Give it some time to finish writing the error message.
-	// But don't wait for "no output", we already waited enough.
-	if defaultError != noOutputCrash || diagWait {
-		mon.waitForOutput()
-	}
-	if bytes.Contains(mon.output, []byte(fuzzerPreemptedStr)) {
+	//prevent vital error
+	if defaultError == noOutputCrash || defaultError == lostConnectionCrash || defaultError == "" {
 		return nil
 	}
-	if defaultError == "" && mon.reporter.ContainsCrash(mon.output[mon.matchPos:]) {
-		// We did not call Diagnose above because we thought there is no error, so call it now.
-		diagOutput, diagWait = mon.inst.diagnose(mon.createReport(defaultError))
-		if diagWait {
-			mon.waitForOutput()
-		}
+	mon.waitForOutput()
+	if bytes.Contains(mon.output, []byte(fuzzerPreemptedStr)) {
+		return nil
 	}
 	rep := mon.createReport(defaultError)
 	if rep == nil {
 		return nil
-	}
-	if len(diagOutput) > 0 {
-		rep.Output = append(rep.Output, vmDiagnosisStart...)
-		rep.Output = append(rep.Output, diagOutput...)
 	}
 	return rep
 }
